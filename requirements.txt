@@ -11,3 +11,6 @@ langgraph
 google.generativeai
 scikit-learn
 fastembed
+requests
+pytesseract
+Pillow

@@ -1,12 +1,14 @@
 import database
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
 from pydantic import ValidationError
 import login_data
 from datetime import datetime
-import re
+import re, os, json, io, base64, requests, pytesseract
 from cam import upload_photo
 from Assistant import app as assistant_app
 from langchain_core.messages import HumanMessage
+from PIL import Image
+import id_card_msg_sender
 
 app = Flask(__name__, template_folder="templates")
 app.secret_key = login_data.super_secret
@@ -881,6 +883,328 @@ def resolve_to():
         
     return redirect(url_for("chat", item_id=item_id))
 
+@app.route('/resolve-idcard/<id_card_id>', methods=['POST'])
+def resolve_id_card(id_card_id):
+    if 'user_email' not in session:
+        flash("Please log in to resolve ID cards.", "error")
+        return redirect(url_for('login'))
+    try:
+        database.resolve_idcard(id_card_id, session['user_email'])
+        flash("ID Card resolved successfully!", "success")
+    except Exception as e:
+        flash(f"Error resolving ID Card: {str(e)}", "error")
+    return redirect(url_for('id_card_notification'))
+
+@app.route('/delete-idcard/<id_card_id>', methods=['POST'])
+def delete_id_card(id_card_id):
+    if 'user_email' not in session:
+        flash("Please log in to delete ID cards.", "error")
+        return redirect(url_for('login'))
+    try:
+        database.delete_idcard(id_card_id, session['user_email'])
+        flash("ID Card deleted successfully!", "success")
+    except Exception as e:
+        flash(f"Error deleting ID Card: {str(e)}", "error")
+    return redirect(url_for('id_card_notification'))
+
+@app.route('/id', methods=["GET", "POST"])
+def id_card_notification():
+    if 'user_email' not in session:
+        flash("Please log in to scan and notify ID cards.", "error")
+        return redirect(url_for('login'))
+
+    email = session['user_email']
+        
+    if request.method == "POST":
+        is_manual_submit = request.form.get('is_manual_submit') == 'true'
+        
+        if is_manual_submit:
+            name = request.form.get('name', 'Cannot Extract')
+            reg = request.form.get('regNo', 'Cannot Extract')
+            location = request.form.get('location', 'IIT Bhilai Campus')
+            remarks = request.form.get('remarks', 'N/A')
+            photo_url_1 = request.form.get('photo_url_1')
+            contact = request.form.get('manual_contact')
+
+            if not contact or not contact.strip():
+                flash("Contact number is required.", "error")
+                return render_template('id.html', show_manual_contact=True, name=name, regNo=reg, location=location, remarks=remarks, photo_url_1=photo_url_1)
+
+            item_data = {
+                "reporterid": email,
+                "type": "found",
+                "name": name,
+                "regNo" : reg,
+                "contact" : contact.strip(),
+                "location": location,
+                "id_url": photo_url_1,
+                "remarks": remarks
+            }
+
+            notification_sent = False
+            whatsapp_error = None
+            try:
+                database.create_found_idcard(item_data)
+                item_id = database.get_last_id()
+              
+                link_url = f"https://lostlinks.onrender.com/id#dashboard"
+                res = id_card_msg_sender.send_id_card_template_message(receiver, name, reg, location, remarks, link_url)
+                print(f"WhatsApp API response for {receiver}: {res}")
+                if res and (res.get("messaging_product") or "messages" in res or res.get("success") is True):
+                    notification_sent = True
+                else:
+                    error_obj = res.get("error") if res else None
+                    if isinstance(error_obj, dict):
+                        whatsapp_error = error_obj.get("message", str(res))
+                    else:
+                        whatsapp_error = str(error_obj) if error_obj else str(res)
+            except Exception as entry_err:
+                print(f"Error creating found listing or sending WhatsApp: {entry_err}")
+                whatsapp_error = str(entry_err)
+
+            if notification_sent:
+                flash("ID Card reported successfully and WhatsApp notification sent to the owner!", "success")
+            else:
+                database.delete_idcard(item_id, email)
+                err_suffix = f" (WhatsApp failed: {whatsapp_error})" if whatsapp_error else ""
+                flash(f"ID Card reported successfully!{err_suffix}", "error")
+
+            return redirect(url_for('id_card_notification'))
+
+        location = request.form.get('location', 'IIT Bhilai Campus')
+        remarks = request.form.get('remarks', 'N/A')
+        
+        photo_file_1 = request.files.get('photo_front')
+        photo_base64_1 = request.form.get('photoBase64_front')
+        photo_file_2 = request.files.get('photo_back')
+        photo_base64_2 = request.form.get('photoBase64_back')
+
+        has_file_1 = photo_file_1 and photo_file_1.filename != ""
+        has_camera_1 = photo_base64_1 and photo_base64_1.strip() != ""
+        has_file_2 = photo_file_2 and photo_file_2.filename != ""
+        has_camera_2 = photo_base64_2 and photo_base64_2.strip() != ""
+
+        if (not has_file_1 and not has_camera_1) or (not has_file_2 and not has_camera_2):
+            flash("Please upload or capture both sides of the ID card.", "error")
+            return render_template('id.html')
+
+        def get_pil_image(photo_file, photo_base64):
+            if photo_file and photo_file.filename != "":
+                photo_file.seek(0)
+                return Image.open(photo_file)
+            elif photo_base64 and photo_base64.strip() != "":
+                if ',' in photo_base64:
+                    header, encoded = photo_base64.split(',', 1)
+                else:
+                    encoded = photo_base64
+                image_bytes = base64.b64decode(encoded)
+                return Image.open(io.BytesIO(image_bytes))
+            return None
+
+        text1 = ""
+        text2 = ""
+        
+        try:
+            img1 = get_pil_image(photo_file_1, photo_base64_1)
+            if img1:
+                text1 = pytesseract.image_to_string(img1)
+        except Exception as e:
+            print(f"Error reading front side image for OCR: {e}")
+            flash("Failed to read the front side of the card.", "error")
+
+        try:
+            img2 = get_pil_image(photo_file_2, photo_base64_2)
+            if img2:
+                text2 = pytesseract.image_to_string(img2)
+        except Exception as e:
+            print(f"Error reading back side image for OCR: {e}")
+            flash("Failed to read the back side of the card.", "error")
+            return render_template('id.html')
+
+        id_info_str = text1 + "\n" + text2
+        id_info = id_info_str.split("\n")
+
+        photo_url_1 = None
+        if has_file_1 or has_camera_1:
+            try:
+                photo_url_1 = upload_photo(photo_file_1, photo_base64_1)
+            except Exception as e:
+                print(f"Error uploading front ID card photo: {e}")
+
+        name = "Cannot Extract"
+        try:
+            for line in id_info:
+                line_clean = line.strip()
+                if re.match(r"^[A-Z\s]{4,40}$", line_clean):
+                        name = line_clean
+                        break
+        except Exception as e:
+            flash("Cannot Extract Name", "error")
+            name = "Cannot Extract"
+
+        try:
+            reg_match = re.search(r"\b[A-Z][0-9]{2}[A-Z]{2}[0-9]{3}\b", id_info_str)
+            reg = reg_match.group() if reg_match else "Cannot Extract"
+        except Exception as e:
+            flash("Cannot Extract Registration Number", "error")
+            reg = "Cannot Extract"
+
+        try:
+            phone_match = re.search(r"\b[2-9][0-9]{9}\b", id_info_str)
+            extracted_phone = phone_match.group() if phone_match else None
+        except Exception as e:
+            flash("Cannot Extract Phone Number", "error")
+            extracted_phone = None
+
+        print("Name :", name)
+        print("Registration Number :", reg)
+        print("Phone Number :", extracted_phone)
+
+        if not extracted_phone or len(extracted_phone) != 10:
+            flash("We couldn't read the contact number from the ID card. Please enter it manually.", "warning")
+            return render_template('id.html', 
+                                   show_manual_contact=True, 
+                                   name=name, 
+                                   regNo=reg, 
+                                   location=location, 
+                                   remarks=remarks, 
+                                   photo_url_1=photo_url_1)
+
+        email_shorten = email.split('@')[0]
+        email_shorten = email_shorten.upper()
+        name_split = name.split(" ")
+        name_match = False
+        for i in range(len(name_split)):
+            if name_split[i] in email_shorten:
+                name_match = True
+                break
+        item_data = {
+            "reporterid": email,
+            "type": "found" if not name_match else "lost",
+            "name": name,
+            "regNo": reg,
+            "contact": extracted_phone,
+            "location": location.strip() if location else "IIT Bhilai Campus",
+            "id_url": photo_url_1,
+            "remarks": remarks
+        }
+
+        notification_sent = False
+        whatsapp_error = None
+        try:
+            database.create_found_idcard(item_data)
+            item_id = database.get_last_id()
+            receiver = extracted_phone
+            link_url = f"https://lostlinks.onrender.com/id#dashboard"
+            res = id_card_msg_sender.send_id_card_template_message(receiver, name, reg, location, remarks, link_url)
+            print(f"WhatsApp API response for {receiver}: {res}")
+            if res and (res.get("messaging_product") or "messages" in res or res.get("success") is True):
+                notification_sent = True
+            else:
+                error_obj = res.get("error") if res else None
+                if isinstance(error_obj, dict):
+                    whatsapp_error = error_obj.get("message", str(res))
+                else:
+                    whatsapp_error = str(error_obj) if error_obj else str(res)
+        except Exception as entry_err:
+            print(f"Error creating found listing or sending WhatsApp: {entry_err}")
+            whatsapp_error = str(entry_err)
+
+        if notification_sent:
+            flash("ID Card reported successfully and WhatsApp notification sent to the owner!", "success")
+        else:
+            database.delete_idcard(item_id, email)
+            err_suffix = f" (WhatsApp failed: {whatsapp_error})" if whatsapp_error else ""
+            flash(f"ID Card reported successfully!{err_suffix}", "error")
+
+        return redirect(url_for('id_card_notification'))
+
+    # GET REQUEST FLOW
+    # Check WhatsApp status
+    whatsapp_ready = False
+    if is_admin():
+        try:
+            w_res = requests.get("http://localhost:3000/status", timeout=1)
+            if w_res.status_code == 200:
+                whatsapp_ready = w_res.json().get("ready", False)
+        except Exception:
+            pass
+    else:
+        whatsapp_ready = True
+
+    user_idcards = database.get_idcards_by_user(email)
+    all_idcards = database.get_idcards()
+
+    unresolved_idcards = [id for id in all_idcards if id.get('status') == 'active']
+    resolved_idcards = [id for id in all_idcards if id.get('status') == 'resolved']
+
+    return render_template("id.html", 
+                           user_idcards=user_idcards, 
+                           unresolved_idcards=unresolved_idcards, 
+                           resolved_idcards=resolved_idcards,
+                           whatsapp_ready=whatsapp_ready)
+
+def is_admin():
+    if 'user_email' not in session:
+        return False
+    email = session['user_email']
+    admin_env = os.getenv("admin_email", "")
+    if not admin_env:
+        return False
+    try:
+        admins = json.loads(admin_env)
+        if isinstance(admins, list):
+            return email in admins
+    except:
+        pass
+    cleaned = admin_env.replace('[', '').replace(']', '').replace('"', '').replace("'", "").strip()
+    admins = [e.strip() for e in cleaned.split(',') if e.strip()]
+    return email in admins
+
+@app.route('/whatsapp/qr.png')
+def whatsapp_qr():
+    if not is_admin():
+        return "Forbidden", 403
+        
+    qr_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'whatsapp_service', 'qr.png')
+    if os.path.exists(qr_path):
+        return send_file(qr_path, mimetype='image/png')
+    else:
+        return "QR Code not generated yet", 404
+
+@app.route('/whatsapp-status-json')
+def whatsapp_status_json():
+    if not is_admin():
+        return {"ready": False, "error": "Forbidden"}, 403
+        
+    gateway_ready = False
+    try:
+        w_res = requests.get("http://localhost:3000/status", timeout=1.5)
+        if w_res.status_code == 200:
+            gateway_ready = w_res.json().get("ready", False)
+    except Exception:
+        pass
+        
+    return {"ready": gateway_ready}
+
+@app.route('/whatsapp')
+def whatsapp_pairing():
+    if not is_admin():
+        flash("You do not have administrative permissions to access the WhatsApp pairing panel.", "error")
+        return redirect(url_for('dashboard'))
+        
+    gateway_ready = False
+    gateway_error = None
+    try:
+        w_res = requests.get("http://localhost:3000/status", timeout=2)
+        if w_res.status_code == 200:
+            gateway_ready = w_res.json().get("ready", False)
+        else:
+            gateway_error = f"Gateway responded with status code {w_res.status_code}"
+    except Exception as e:
+        gateway_error = f"Could not connect to local WhatsApp server: {str(e)}"
+        
+    return render_template("whatsapp.html", ready=gateway_ready, error=gateway_error)
 
 if __name__ == '__main__':
     database.init_db()

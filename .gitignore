@@ -33,3 +33,9 @@ env/
 # OS metadata
 .DS_Store
 tailwind-cache/
+
+# WhatsApp service credentials and local files
+whatsapp_service/.baileys_auth/
+whatsapp_service/.wwebjs_auth/
+whatsapp_service/.wwebjs_cache/
+whatsapp_service/qr.png

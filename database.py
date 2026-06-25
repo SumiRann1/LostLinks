@@ -236,3 +236,31 @@ def resolve_claim(email, item_id, resolved_to_id):
     response = supabase.table("Item").update({"resolvedto": resolved_to_id, "status": "resolved"}).eq("id", item_id).eq("reporterid", email).execute()
     print(f"Successfully resolved claim for {email} to item {item_id}")
     return response.data
+
+
+#ID CARD
+def create_found_idcard(item_data):
+    item_data["id"] = f"idcard_{secrets.token_urlsafe(8)}"
+    response = supabase.table("IDCard").insert(item_data).execute()
+    print(f"Successfully created found ID card in Supabase: {item_data['regNo']}")
+    return response
+
+def get_last_id():
+    response = supabase.table("IDCard").select("id").order("createdat", desc=True).limit(1).execute()
+    return response.data
+
+def get_idcards():
+    response = supabase.table("IDCard").select("*").order("createdat", desc=True).execute()
+    return response.data
+
+def get_idcards_by_user(email):
+    response = supabase.table("IDCard").select("*").eq("reporterid", email).order("createdat", desc=True).execute()
+    return response.data
+
+def resolve_idcard(id_card_id, email):
+    response = supabase.table("IDCard").update({"status": "resolved"}).eq("id", id_card_id).eq("reporterid", email).execute()
+    return response.data
+
+def delete_idcard(id_card_id, email):
+    response = supabase.table("IDCard").delete().eq("id", id_card_id).eq("reporterid", email).execute()
+    return response.data

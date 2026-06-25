@@ -9,10 +9,11 @@ from typing import Annotated, Literal, Optional, TypedDict, List, Dict, Union
 from langchain_core.tools import tool
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 from sklearn.metrics.pairwise import cosine_similarity
-import difflib, re, requests, base64, os
+import difflib, re, requests, base64, os, io
 import google.generativeai as genai
 from pydantic import BaseModel, Field
-
+from PIL import Image
+import pytesseract
 
 system_message_content = """You are the "LostLinks Assistant", the official AI helper for LostLinks—a smart web portal designed to help users report, find, and recover lost belongings.
 
@@ -20,6 +21,7 @@ Your role is to assist users in querying the database for lost/found items, find
 Remember if a user says "I lost", "I lost my" or "I lost my watch" or "lost watch" or "my lost watch", it means the user has lost an item. So if user wants to create a report of it type should be lost,
 while if the users wants to search/get details/know about a lost item, It means the item if exists in database can bre found under the type "found".
 Similarly if the user wants to report an item as found, it means the user has found an item. So if user wants to create a report of it type should be found.
+Also Remember, you cannot make a entry for ID Card in Database. You should politely navigate the uset to `/id`.
 
 ### 1. CORE CAPABILITIES & TOOLS
 You have access to these tools:
@@ -28,6 +30,7 @@ You have access to these tools:
 - fetch_items_nearby(location): Retrieves active items that are nearby a specific campus landmark. Always use this tool when a user asks about items lost, found, or reported near a particular location (e.g., a hostel, Mess, ground, parking, etc.).
 - fetch_similar_items(query_text): Retrieves items similar to the query_text using vector similarity. Always use this tool when a user asks about items similar to a given text.
 - make_report(email, title, description, location, category, losttime, image, type): Makes a report for a lost or found item. Always use this tool when a user asks to make a report for a lost or found item.
+- find_idcards(image): Searches for a matching student ID card in the database using the base64-encoded image input. Use this tool when the user uploads an ID card image and wants to find who it belongs to, or check if there is any matching record in the database.
 
 ### 2. WEBAPP NAVIGATION & URL MAPPING
 When advising users on how to perform actions, direct them to the appropriate pages using these routes:
@@ -144,6 +147,8 @@ class AgentState(TypedDict):
     nearby_items: Dict
     similar_items: Dict
     report_tool : Union[Dict, str]
+    id_card : Union[Dict, str]
+    report_id : Union[Dict, str]
 
 @tool
 def fetch_items() -> dict:
@@ -404,7 +409,99 @@ def make_report(email = None, title = None, description = None, location = None,
     else:
         return {"report_tool": "Please provide all the details about the item."}
 
-tools = [fetch_items, fetch_reported_by_user, fetch_items_nearby, fetch_similar_items, make_report]
+def ocr_id(image, state_name):
+    if not image or not image.strip():
+        return {"find_idcard_tool": "Please provide an image of the id card."}
+    def get_pil_image(image):
+        if image and image.strip() != "":
+            if ',' in image:
+                header, encoded = image.split(',', 1)
+            else:
+                encoded = image
+            image_bytes = base64.b64decode(encoded)
+            return Image.open(io.BytesIO(image_bytes))
+        return None    
+        
+    try:
+        img = get_pil_image(image)
+        if img:
+            text = pytesseract.image_to_string(img)
+    except Exception as e:
+        print(f"Error reading front side image for OCR: {e}")
+        return {f"{state_name}": f"Error reading front side image for OCR: {str(e)}" + "Manually Enter Details"}
+    
+    name = ""
+    for line in text.split("\n"):
+        line_clean = line.strip()
+        if re.match(r"^[A-Z\s]{4,40}$", line_clean):
+            name = line_clean
+            break
+
+    if name == "":
+        return {f"{state_name}": "Could not extract name from the image. Manually Enter Details"}
+    
+    reg_no = ""
+    for line in text.split("\n"):
+        line_clean = line.strip()
+        if re.match(r"^[A-Z][0-9]{2}[A-Z]{2}[0-9]{3}$", line_clean):
+            reg_no = line_clean
+            break
+    
+    if reg_no == "":
+        return {f"{state_name}": "Could not extract roll number from the image. Manually Enter Details"}
+    
+    contact = ""
+    for line in text.split("\n"):
+        line_clean = line.strip()
+        if re.match(r"^[0-9]{10}$", line_clean):
+            contact = line_clean
+            break
+    
+    if contact == "":
+        return {f"{state_name}": "Could not extract contact number from the image. Manually Enter Details"}
+    
+    return name, reg_no, contact
+
+@tool
+def find_idcards(image):
+    """
+    Use this tool if the user wants to find their id card from the image.
+    Args:
+        image: The image of the id card
+    Returns:
+        A dictionary containing the details of the id card.
+    """
+    name, reg_no, contact = ocr_id(image, "id_card")
+    
+    all_ids = database.get_idcards()
+    lost_ids = []
+    found_ids = []
+
+    for id in all_ids:
+        if id["type"] == "lost":
+            lost_ids.append(id)
+        else:
+            found_ids.append(id)
+
+    for id in lost_ids:
+        if id["name"] == name or name in id["name"]:
+            return {"id_card": f"Lost ID Card Entry: {id}"}
+        elif id["reg_no"] == reg_no:
+            return {"id_card": f"Lost ID Card Entry: {id}"}
+        elif id["contact"] == contact:
+            return {"id_card": f"Lost ID Card Entry: {id}"}    
+
+    for id in found_ids:
+        if id["name"] == name or name in id["name"]:
+            return {"id_card": f"Found ID Card Entry : {id}"}
+        elif id["reg_no"] == reg_no:
+            return {"id_card": f"Found ID Card Entry: {id}"}
+        elif id["contact"] == contact:
+            return {"id_card": f"Found ID Card Entry: {id}"}  
+    
+    return {"id_card": "Could not find any matching ID Card Entries, Navigate to /id#dashboard."}  
+
+tools = [fetch_items, fetch_reported_by_user, fetch_items_nearby, fetch_similar_items, make_report, find_idcards]
 tool_node = ToolNode(tools)
 
 # llm = ChatGroq(model_name="llama-3.1-8b-instant", temperature=0.0)

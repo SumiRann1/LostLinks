@@ -67,6 +67,8 @@
           id="nav-report-lost-link">Report Lost</a>
         <a href="{{ url_for('report_found') }}" class="text-slate-600 hover:text-primary font-medium transition"
           id="nav-report-found-link">Report Found</a>
+        <a href="{{ url_for('id_card_notification') }}" class="text-slate-600 hover:text-primary font-medium transition"
+          id="nav-scan-id-link">Scan ID</a>
         <a href="{{ url_for('assistant_page') }}" class="text-slate-600 hover:text-primary font-medium transition"
           id="nav-assistant-link">AI Assistant</a>
         <a href="{{ url_for('logout') }}"
@@ -112,6 +114,9 @@
         <a href="{{ url_for('report_found') }}"
           class="block px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-primary rounded-xl font-medium transition">Report
           Found</a>
+        <a href="{{ url_for('id_card_notification') }}"
+          class="block px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-primary rounded-xl font-medium transition">Scan
+          ID</a>
         <a href="{{ url_for('profile') }}"
           class="block px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-primary rounded-xl font-medium transition">Profile</a>
         <a href="{{ url_for('assistant_page') }}"
