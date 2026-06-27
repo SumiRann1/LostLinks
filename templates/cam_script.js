@@ -63,13 +63,13 @@
   document.getElementById('photo-base64').value = '';
   document.getElementById('retake-photo-btn').style.display = 'none';
 
-  // 📱 ANDROID MODE
+  // ANDROID MODE
   if (window.AndroidCamera && AndroidCamera.openCamera) {
     AndroidCamera.openCamera();
-    return; // 🔥 IMPORTANT: STOP HERE
+    return;
   }
 
-  // 💻 WEB MODE ONLY (UI updates belong here)
+  // WEB MODE ONLY (UI updates belong here)
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {

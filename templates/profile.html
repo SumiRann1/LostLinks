@@ -55,4 +55,203 @@
 
   </div>
 </div>
+
+<!-- changes made -->
+
+<!-- Main Grid: Lost and Found -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+<!-- Lost Items Column -->
+    <div class="flex flex-col gap-4 animate-fade-in-up delay-200">
+      <div class="flex items-center justify-between bg-gradient-to-r from-rose-500 to-white rounded-[20px] p-5 shadow-sm border border-rose-100">
+        <h2 class="text-xl font-bold text-white">My Lost Reports</h2>
+        <a href="{{ url_for('report_lost') }}"
+          class="bg-rose-500 hover:bg-rose-600 text-white font-semibold py-2 px-4 rounded-xl transition shadow-md"
+          id="report-lost-btn">Report Lost</a>
+      </div>
+
+      <div class="flex flex-col gap-4 max-h-[800px] overflow-y-auto pr-2" id="lost-items-list">
+        {% if user_lost_entries %}
+        {% for entry in user_lost_entries %}
+        <div
+    class="group item-dashboard-card block bg-gradient-to-br from-rose-50 to-white rounded-[24px] shadow-sm border border-rose-100 hover:border-rose-300 hover:-translate-y-1 hover:shadow-lg transition-all duration-300 p-6 cursor-pointer"
+    onclick="openChat('{{ url_for('chat', item_id=entry.id) }}')"
+    data-category="{{ entry.category }}">
+          <div class="flex justify-between items-start mb-4">
+            <h3 class="item-card-title text-xl font-bold text-slate-800">{{ entry.title }}</h3>
+            <span class="bg-rose-100 text-rose-700 text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap">{{
+              entry.category }}</span>
+          </div>
+
+          <div class="text-sm text-slate-500 mb-4 space-y-1 item-card-details">
+            <p class="flex items-center gap-1 flex-wrap">
+              <b>📍 Location:</b>
+              <button onclick="showLocationMap(event, '{{ entry.location }}')" class="text-primary hover:text-indigo-800 hover:underline inline-flex items-center gap-0.5 transition focus:outline-none text-left cursor-pointer font-medium">
+                {{ entry.location }}
+              </button>
+            </p>
+            <p><b>⏰ Time:</b> {{ " ".join(entry.losttime.split("T")) if entry.losttime else "N/A" }}</p>
+            <p><b>Status:</b> 
+                  {% if entry.status == 'resolved' %}
+                    <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold ml-1">Resolved</span>
+                    {% if entry.resolvedto %}
+                      <span class="text-xs text-slate-500 block mt-1">Resolved to: <b class="text-indigo-600">{{ entry.resolvedto }}</b></span>
+                    {% endif %}
+                  {% else %}
+                    <span class="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold ml-1">Active</span>
+                  {% endif %}
+                </p>
+          </div>
+
+          <p class="text-slate-700 text-sm mb-4 line-clamp-3 item-card-description">{{ entry.description }}</p>
+
+          {% if entry.photourl %}
+          <div class="w-full h-48 rounded-xl overflow-hidden bg-slate-100 mt-2">
+            <img src="{{ entry.photourl }}" alt="{{ entry.title }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+          </div>
+          {% endif %}
+        {% if entry.status != 'resolved' %}
+                <div class="flex flex-col gap-2 mt-2">
+                  {% if entry.claimsmade %}
+                    <form action="{{ url_for('resolve_item', item_id=entry.id) }}" method="POST" class="w-full flex flex-col gap-1" onsubmit="return confirm('Are you sure you want to resolve this item to the selected claimant?');">
+                      <select name="resolved_to" class="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" required>
+                        <option value="" disabled selected>Select Claimant to Resolve</option>
+                        {% for claimant in entry.claimsmade %}
+                          <option value="{{ claimant }}">{{ claimant }}</option>
+                        {% endfor %}
+                      </select>
+                      <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-[10px] font-bold py-2 rounded-lg transition shadow-md shadow-emerald-100 hover:shadow-lg hover:-translate-y-0.5 transform duration-150 cursor-pointer flex items-center justify-center gap-1">
+                        Confirm Resolve
+                      </button>
+                    </form>
+                  {% endif %}
+                  
+                  <div class="grid grid-cols-2 gap-2 mt-1">
+                    <form action="{{ url_for('delete_item', item_id=entry.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete the listing?');" class="w-full col-span-2">
+                      <button type="submit" class="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold py-2 rounded-lg transition cursor-pointer">
+                        Delete Listing
+                      </button>
+                    </form>
+                    <form action="{{ url_for('update_item', item_id=entry.id) }}" method="GET" class="col-span-2">
+                      <button type="submit" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2 rounded-lg transition cursor-pointer">
+                        Update Listing
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              {% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <div
+          class="bg-gradient-to-br from-indigo-50 to-white rounded-[24px] p-8 text-center text-slate-500 font-medium border border-indigo-100">
+          No
+          active reports of lost items.</div>
+        {% endif %}
+        <div
+          class="bg-gradient-to-br from-indigo-50 to-white rounded-[24px] p-8 text-center text-slate-500 font-medium border border-indigo-100 hidden"
+          id="lost-no-results">No matching lost items found.</div>
+      </div>
+    </div>
+
+    <!-- Found Items Column -->
+    <div class="flex flex-col gap-4 animate-fade-in-up delay-300">
+      <div class="flex items-center justify-between bg-gradient-to-r from-emerald-500 to-white rounded-[20px] p-5 shadow-sm border border-emerald-100">
+        <h2 class="text-xl font-bold text-white">My Found Reports</h2>
+        <a href="{{ url_for('report_found') }}"
+          class="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded-xl transition shadow-md"
+          id="report-found-btn">Report Found</a>
+      </div>
+
+      <div class="flex flex-col gap-4 max-h-[800px] overflow-y-auto pr-2" id="found-items-list">
+        {% if user_found_entries %}
+        {% for entry in user_found_entries %}
+        <div
+    class="group item-dashboard-card block bg-gradient-to-br from-emerald-50 to-white rounded-[24px] shadow-sm border border-emerald-100 hover:border-rose-300 hover:-translate-y-1 hover:shadow-lg transition-all duration-300 p-6 cursor-pointer"
+    onclick="openChat('{{ url_for('chat', item_id=entry.id) }}')"
+    data-category="{{ entry.category }}">
+          <div class="flex justify-between items-start mb-4">
+            <h3 class="item-card-title text-xl font-bold text-slate-800">{{ entry.title }}</h3>
+            <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap">{{
+              entry.category }}</span>
+          </div>
+
+          <div class="text-sm text-slate-500 mb-4 space-y-1 item-card-details">
+            <p class="flex items-center gap-1 flex-wrap">
+              <b>📍 Location:</b>
+              <button onclick="showLocationMap(event, '{{ entry.location }}')" class="text-primary hover:text-indigo-800 hover:underline inline-flex items-center gap-0.5 transition focus:outline-none text-left cursor-pointer font-medium">
+                {{ entry.location }}
+              </button>
+            </p>
+            <p><b>⏰ Time:</b> {{ " ".join(entry.losttime.split("T")) if entry.losttime else "N/A" }}</p>
+            <p><b>Status:</b> 
+                  {% if entry.status == 'resolved' %}
+                    <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold ml-1">Resolved</span>
+                    {% if entry.resolvedto %}
+                      <span class="text-xs text-slate-500 block mt-1">Resolved to: <b class="text-indigo-600">{{ entry.resolvedto }}</b></span>
+                    {% endif %}
+                  {% else %}
+                    <span class="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold ml-1">Active</span>
+                  {% endif %}
+                </p>
+          </div>
+
+          <p class="text-slate-700 text-sm mb-4 line-clamp-3 item-card-description">{{ entry.description }}</p>
+
+          {% if entry.photourl %}
+          <div class="w-full h-48 rounded-xl overflow-hidden bg-slate-100 mt-2">
+            <img src="{{ entry.photourl }}" alt="{{ entry.title }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+          </div>
+          {% endif %}
+        {% if entry.status != 'resolved' %}
+                <div class="flex flex-col gap-2 mt-2">
+                  {% if entry.claimsmade %}
+                    <form action="{{ url_for('resolve_item', item_id=entry.id) }}" method="POST" class="w-full flex flex-col gap-1" onsubmit="return confirm('Are you sure you want to resolve this item to the selected claimant?');">
+                      <select name="resolved_to" class="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 transition" required>
+                        <option value="" disabled selected>Select Claimant to Resolve</option>
+                        {% for claimant in entry.claimsmade %}
+                          <option value="{{ claimant }}">{{ claimant }}</option>
+                        {% endfor %}
+                      </select>
+                      <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-[10px] font-bold py-2 rounded-lg transition shadow-md shadow-emerald-100 hover:shadow-lg hover:-translate-y-0.5 transform duration-150 cursor-pointer flex items-center justify-center gap-1">
+                        Confirm Resolve
+                      </button>
+                    </form>
+                  {% endif %}
+                  
+                  <div class="grid grid-cols-2 gap-2 mt-1">
+                    <form action="{{ url_for('delete_item', item_id=entry.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete the listing?');" class="w-full col-span-2">
+                      <button type="submit" class="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold py-2 rounded-lg transition cursor-pointer">
+                        Delete Listing
+                      </button>
+                    </form>
+                    <form action="{{ url_for('update_item', item_id=entry.id) }}" method="GET" class="col-span-2">
+                      <button type="submit" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2 rounded-lg transition cursor-pointer">
+                        Update Listing
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              {% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <div
+          class="bg-gradient-to-br from-indigo-50 to-white rounded-[24px] p-8 text-center text-slate-500 font-medium border border-indigo-100">
+          No
+          active reports of found items.</div>
+        {% endif %}
+        <div
+          class="bg-gradient-to-br from-indigo-50 to-white rounded-[24px] p-8 text-center text-slate-500 font-medium border border-indigo-100 hidden"
+          id="found-no-results">No matching found items found.</div>
+      </div>
+    </div>
+  </div>
+
+
+<script>
+function openChat(url) {
+    window.location.href = url;
+}
+</script>
 {% endblock %}
