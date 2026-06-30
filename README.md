@@ -100,6 +100,7 @@ The web application is fully containerized and deployed on **Render**.
 *   **Web URL**: `https://<your-render-subdomain>.onrender.com`
 *   **Gunicorn WSGI Server**: Utilized for handling concurrent production traffic.
 *   **Automatic SSL/TLS**: Provided out-of-the-box by Render.
+*   [![Live Demo](https://img.shields.io/badge/Live-Demo-blue)](https://lostlinks.onrender.com)
 
 ### 📱 Android APK
 The mobile client is built as a **Trusted Web Activity (TWA)**.
