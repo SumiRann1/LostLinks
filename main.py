@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from pydantic import ValidationError
 import login_data
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import re
 from cam import upload_photo
 import mailer
@@ -407,7 +408,7 @@ def report_lost():
         try:
             selected_time = datetime.fromisoformat(losttime)
 
-            if selected_time > datetime.now():
+            if selected_time > datetime.now(tz=ZoneInfo('Asia/Kolkata')):
                 flash("Date and time cannot be in the future.", "error")
                 return render_template(
                     'report-lost.html',
@@ -502,7 +503,7 @@ def report_found():
         try:
             selected_time = datetime.fromisoformat(losttime)
 
-            if selected_time > datetime.now():
+            if selected_time > datetime.now(tz=ZoneInfo('Asia/Kolkata')):
                 flash("Date and time cannot be in the future.", "error")
                 return render_template(
                     'report-found.html',
