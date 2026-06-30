@@ -406,7 +406,7 @@ def report_lost():
             return render_template('report-lost.html', email=user_email, user_lost_entries=user_lost_entries)
         
         try:
-            selected_time = datetime.fromisoformat(losttime)
+            selected_time = datetime.fromisoformat(losttime).replace(tzinfo=ZoneInfo('Asia/Kolkata'))
 
             if selected_time > datetime.now(tz=ZoneInfo('Asia/Kolkata')):
                 flash("Date and time cannot be in the future.", "error")
@@ -501,7 +501,7 @@ def report_found():
             return render_template('report-found.html', email=user_email, user_found_entries=user_found_entries)
         
         try:
-            selected_time = datetime.fromisoformat(losttime)
+            selected_time = datetime.fromisoformat(losttime).replace(tzinfo=ZoneInfo('Asia/Kolkata'))
 
             if selected_time > datetime.now(tz=ZoneInfo('Asia/Kolkata')):
                 flash("Date and time cannot be in the future.", "error")
