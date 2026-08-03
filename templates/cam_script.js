@@ -3,10 +3,8 @@
 
   {/* // Simple tab logic to make it work correctly with Tailwind classes */}
   function switchTab(tabId) {
-    // Buttons
     const uploadBtn = document.getElementById('tab-upload-btn');
     const captureBtn = document.getElementById('tab-capture-btn');
-    // Contents
     const uploadContent = document.getElementById('content-upload');
     const captureContent = document.getElementById('content-capture');
 
@@ -27,7 +25,6 @@
     }
   }
 
-  // Upload Preview Logic
  function previewUpload(input) {
     document.getElementById('photo-base64').value = '';
 

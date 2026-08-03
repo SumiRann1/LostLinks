@@ -147,6 +147,5 @@ def delete_account(id_token):
         return {"success": True}
     except Exception as e:
         return display_error(e)
-
-
+# 
  
